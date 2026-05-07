@@ -273,6 +273,7 @@ function classifyProduct(name) {
 
 const fmt  = n => n.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
 const fmtP = n => (n * 100).toFixed(1) + '%';
+const fmtQ = n => n % 1 === 0 ? n.toLocaleString('zh-TW') : n.toFixed(2);
 const cls  = n => n >= 0 ? 'positive' : 'negative';
 
 let gMonthly = {}, gCategory = {}, gSales = {}, gMonths = [], gSalesList = [];
@@ -318,21 +319,32 @@ function handleFile(file) {
 function processData(rows) {
   if (rows.length < 2) { setStatus('❌ 檔案無資料', 'error'); return; }
 
-  const orders = {};
+  const lines = [];
 
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const dept = r[2];
-    if (!dept || dept !== '正洋') continue;
+    if (!dept || String(dept).trim() !== '正洋') continue;
 
     const orderNo   = String(r[0] || '').trim();
     const dateRaw   = r[1];
-    const revenue   = parseFloat(r[20]) || 0;     // 欄 21：本幣含稅金額
-    const cost      = parseFloat(r[19]) || 0;     // 欄 20：總成本
+    const revRaw    = r[20];   // 欄 U：本幣含稅金額
+    const costRaw   = r[19];   // 欄 T：總成本
+    const qtyRaw    = r[5];    // 欄 F：數量
     const product   = String(r[4] || '').trim();
     const salesperson = String(r[15] || '').trim();
 
     if (!orderNo || !dateRaw) continue;
+
+    // Parse numeric values — handles both number and comma-formatted string
+    const parseNum = v => {
+      if (typeof v === 'number') return v;
+      return parseFloat(String(v || '').replace(/,/g, '')) || 0;
+    };
+
+    const revenue = parseNum(revRaw);
+    const cost    = parseNum(costRaw);
+    const qty     = parseNum(qtyRaw);
 
     let dateStr = '';
     if (typeof dateRaw === 'number') {
@@ -344,36 +356,36 @@ function processData(rows) {
     if (dateStr.length < 7) continue;
     const month = dateStr.substring(0, 7);
 
-    if (!orders[orderNo]) {
-      orders[orderNo] = { month, revenue, cost: 0, category: classifyProduct(product), salesperson };
-    }
-    orders[orderNo].cost += cost;
+    lines.push({ month, revenue, cost, qty, category: classifyProduct(product), salesperson, product });
   }
 
   gMonthly = {}; gCategory = {}; gSales = {};
 
-  for (const o of Object.values(orders)) {
-    const { month: m, revenue: rev, cost, category: cat, salesperson: sp } = o;
+  for (const o of lines) {
+    const { month: m, revenue: rev, cost, qty, category: cat, salesperson: sp } = o;
 
-    if (!gMonthly[m]) gMonthly[m] = { rev: 0, cost: 0 };
+    if (!gMonthly[m]) gMonthly[m] = { rev: 0, cost: 0, qty: 0 };
     gMonthly[m].rev  += rev;
     gMonthly[m].cost += cost;
+    gMonthly[m].qty  += qty;
 
     if (!gCategory[cat]) gCategory[cat] = {};
-    if (!gCategory[cat][m]) gCategory[cat][m] = { rev: 0, cost: 0 };
+    if (!gCategory[cat][m]) gCategory[cat][m] = { rev: 0, cost: 0, qty: 0 };
     gCategory[cat][m].rev  += rev;
     gCategory[cat][m].cost += cost;
+    gCategory[cat][m].qty  += qty;
 
     if (!gSales[sp]) gSales[sp] = {};
-    if (!gSales[sp][m]) gSales[sp][m] = 0;
-    gSales[sp][m] += rev;
+    if (!gSales[sp][m]) gSales[sp][m] = { rev: 0, qty: 0 };
+    gSales[sp][m].rev += rev;
+    gSales[sp][m].qty += qty;
   }
 
   gMonths    = Object.keys(gMonthly).sort();
   gSalesList = Object.keys(gSales).sort();
 
-  const totalOrders = Object.keys(orders).length;
-  setStatus(`✅ 已分析 ${totalOrders} 張訂單（正洋部門），共 ${gMonths.length} 個月份`, 'success');
+  const totalLines = lines.length;
+  setStatus(`✅ 已分析 ${totalLines} 筆資料（正洋部門），共 ${gMonths.length} 個月份`, 'success');
 
   renderAll();
   document.getElementById('results').style.display = 'block';
@@ -482,18 +494,19 @@ function renderCategoryTables() {
     const months = Object.keys(gCategory[cat]).sort();
     let tR = 0, tC = 0;
     html += `<div class="category-header">${cat}</div>`;
-    html += `<table><thead><tr><th>月份</th><th>營收</th><th>成本</th><th>毛利</th><th>毛利率</th></tr></thead><tbody>`;
+    html += `<table><thead><tr><th>月份</th><th>銷售數量</th><th>營收</th><th>成本</th><th>毛利</th><th>毛利率</th></tr></thead><tbody>`;
+    let tQ = 0;
     for (const m of months) {
-      const { rev, cost } = gCategory[cat][m];
+      const { rev, cost, qty } = gCategory[cat][m];
       const profit = rev - cost;
       const margin = rev > 0 ? profit / rev : 0;
-      html += `<tr><td>${m}</td><td>$${fmt(rev)}</td><td>$${fmt(cost)}</td>
+      html += `<tr><td>${m}</td><td>${fmtQ(qty)}</td><td>$${fmt(rev)}</td><td>$${fmt(cost)}</td>
         <td class="${cls(profit)}">$${fmt(profit)}</td>
         <td class="${cls(margin)}">${fmtP(margin)}</td></tr>`;
-      tR += rev; tC += cost;
+      tR += rev; tC += cost; tQ += qty;
     }
     const tP = tR - tC; const tM = tR > 0 ? tP / tR : 0;
-    html += `<tr class="total-row"><td>小計</td><td>$${fmt(tR)}</td><td>$${fmt(tC)}</td>
+    html += `<tr class="total-row"><td>小計</td><td>${fmtQ(tQ)}</td><td>$${fmt(tR)}</td><td>$${fmt(tC)}</td>
       <td class="${cls(tP)}">$${fmt(tP)}</td><td class="${cls(tM)}">${fmtP(tM)}</td></tr>
       </tbody></table><br>`;
   }
@@ -502,9 +515,11 @@ function renderCategoryTables() {
 
 function renderSales() {
   const colors = ['#1a56a0','#27ae60','#e67e22','#8e44ad','#e74c3c','#16a085','#f39c12'];
+  const getRevSales = (sp, m) => (gSales[sp][m] ? gSales[sp][m].rev : 0);
+
   const datasets = gSalesList.map((sp, i) => ({
     label: sp,
-    data: gMonths.map(m => gSales[sp][m] || 0),
+    data: gMonths.map(m => getRevSales(sp, m)),
     backgroundColor: colors[i % colors.length],
     borderRadius: 4
   }));
@@ -519,7 +534,7 @@ function renderSales() {
   });
 
   let html = `<table><thead><tr><th>月份</th>`;
-  for (const sp of gSalesList) html += `<th>${sp}</th>`;
+  for (const sp of gSalesList) html += `<th>${sp}<br><small style="font-weight:normal;color:#888">營收／數量</small></th>`;
   html += `<th>月合計</th></tr></thead><tbody>`;
 
   let totals = {};
@@ -527,10 +542,12 @@ function renderSales() {
     let rowTotal = 0;
     html += `<tr><td>${m}</td>`;
     for (const sp of gSalesList) {
-      const v = gSales[sp][m] || 0;
-      rowTotal += v;
-      totals[sp] = (totals[sp] || 0) + v;
-      html += `<td>${v > 0 ? '$' + fmt(v) : '-'}</td>`;
+      const d = gSales[sp][m] || { rev: 0, qty: 0 };
+      rowTotal += d.rev;
+      if (!totals[sp]) totals[sp] = { rev: 0, qty: 0 };
+      totals[sp].rev += d.rev;
+      totals[sp].qty += d.qty;
+      html += `<td>${d.rev !== 0 ? '$' + fmt(d.rev) + '<br><small>' + fmtQ(d.qty) + '件</small>' : '-'}</td>`;
     }
     html += `<td><strong>$${fmt(rowTotal)}</strong></td></tr>`;
   }
@@ -538,8 +555,9 @@ function renderSales() {
   let grandTotal = 0;
   html += `<tr class="total-row"><td>合計</td>`;
   for (const sp of gSalesList) {
-    html += `<td>$${fmt(totals[sp] || 0)}</td>`;
-    grandTotal += totals[sp] || 0;
+    const t = totals[sp] || { rev: 0, qty: 0 };
+    html += `<td>$${fmt(t.rev)}<br><small>${fmtQ(t.qty)}件</small></td>`;
+    grandTotal += t.rev;
   }
   html += `<td>$${fmt(grandTotal)}</td></tr></tbody></table>`;
   document.getElementById('tableSales').innerHTML = html;
