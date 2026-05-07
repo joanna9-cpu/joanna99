@@ -590,23 +590,46 @@ function renderCategoryTables() {
   let html = '';
   for (const cat of orderedCats) {
     const months = Object.keys(gCategory[cat]).sort();
-    let tR = 0, tC = 0;
     html += `<div class="category-header">${cat}</div>`;
-    html += `<table><thead><tr><th>月份</th><th>銷售數量</th><th>營收</th><th>成本</th><th>毛利</th><th>毛利率</th></tr></thead><tbody>`;
-    let tQ = 0;
-    for (const m of months) {
-      const { rev, cost, qty } = gCategory[cat][m];
-      const profit = rev - cost;
-      const margin = rev > 0 ? profit / rev : 0;
-      html += `<tr><td>${m}</td><td>${fmtQ(qty)}</td><td>$${fmt(rev)}</td><td>$${fmt(cost)}</td>
+
+    // Collect products under this category, sorted by revenue desc
+    const catProds = Object.entries(gProducts)
+      .filter(([, d]) => d.cat === cat)
+      .map(([name, d]) => {
+        let rev = 0, cost = 0, qty = 0;
+        for (const m of months) {
+          if (d.months[m]) { rev += d.months[m].rev; cost += d.months[m].cost; qty += d.months[m].qty; }
+        }
+        return { name, rev, cost, qty };
+      })
+      .filter(p => p.rev !== 0 || p.qty !== 0)
+      .sort((a, b) => b.rev - a.rev);
+
+    html += `<table><thead><tr>
+      <th style="text-align:left">產品名稱</th>
+      <th>銷售數量</th><th>營收</th><th>成本</th><th>毛利</th><th>毛利率</th>
+    </tr></thead><tbody>`;
+
+    let tR = 0, tC = 0, tQ = 0;
+    for (const p of catProds) {
+      const profit = p.rev - p.cost;
+      const margin = p.rev > 0 ? profit / p.rev : 0;
+      html += `<tr>
+        <td style="padding-left:16px">${p.name}</td>
+        <td>${fmtQ(p.qty)}</td>
+        <td>$${fmt(p.rev)}</td>
+        <td>$${fmt(p.cost)}</td>
         <td class="${cls(profit)}">$${fmt(profit)}</td>
-        <td class="${cls(margin)}">${fmtP(margin)}</td></tr>`;
-      tR += rev; tC += cost; tQ += qty;
+        <td class="${cls(margin)}">${fmtP(margin)}</td>
+      </tr>`;
+      tR += p.rev; tC += p.cost; tQ += p.qty;
     }
+
     const tP = tR - tC; const tM = tR > 0 ? tP / tR : 0;
-    html += `<tr class="total-row"><td>小計</td><td>${fmtQ(tQ)}</td><td>$${fmt(tR)}</td><td>$${fmt(tC)}</td>
-      <td class="${cls(tP)}">$${fmt(tP)}</td><td class="${cls(tM)}">${fmtP(tM)}</td></tr>
-      </tbody></table><br>`;
+    html += `<tr class="total-row">
+      <td>小計</td><td>${fmtQ(tQ)}</td><td>$${fmt(tR)}</td><td>$${fmt(tC)}</td>
+      <td class="${cls(tP)}">$${fmt(tP)}</td><td class="${cls(tM)}">${fmtP(tM)}</td>
+    </tr></tbody></table><br>`;
   }
   document.getElementById('tableCategory').innerHTML = html;
 }
