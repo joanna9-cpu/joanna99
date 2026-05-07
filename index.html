@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>正洋 月份營收分析</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Microsoft JhengHei', Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+  header {
+    background: linear-gradient(135deg, #1a56a0, #2979c7);
+    color: #fff;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { font-size: 22px; font-weight: 700; }
+  header p { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+  .upload-area {
+    border: 2px dashed #90b8e0;
+    border-radius: 12px;
+    background: #fff;
+    text-align: center;
+    padding: 48px 24px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 24px;
+  }
+  .upload-area:hover, .upload-area.drag-over {
+    border-color: #1a56a0;
+    background: #eef4fc;
+  }
+  .upload-icon { font-size: 48px; margin-bottom: 12px; }
+  .upload-area h2 { font-size: 18px; color: #1a56a0; margin-bottom: 6px; }
+  .upload-area p { font-size: 13px; color: #888; }
+  #fileInput { display: none; }
+  .btn-upload {
+    display: inline-block;
+    margin-top: 16px;
+    padding: 10px 28px;
+    background: #1a56a0;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-upload:hover { background: #154485; }
+
+  #status {
+    display: none;
+    padding: 12px 18px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  #status.loading { background: #fff8e1; color: #856404; border: 1px solid #ffc107; }
+  #status.error   { background: #fde8e8; color: #c0392b; border: 1px solid #f5c6cb; }
+  #status.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #dce4f0;
+  }
+  .tab {
+    padding: 10px 20px;
+    border-radius: 8px 8px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.15s;
+    border: none;
+    background: transparent;
+  }
+  .tab:hover { color: #1a56a0; background: #eef4fc; }
+  .tab.active { background: #1a56a0; color: #fff; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a56a0;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #eef4fc;
+  }
+
+  .kpi-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+  .kpi {
+    flex: 1;
+    min-width: 160px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    border-left: 4px solid #1a56a0;
+  }
+  .kpi.green { border-color: #27ae60; }
+  .kpi.orange { border-color: #e67e22; }
+  .kpi.purple { border-color: #8e44ad; }
+  .kpi-label { font-size: 12px; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-value { font-size: 24px; font-weight: 700; color: #222; }
+  .kpi-sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    background: #1a56a0;
+    color: #fff;
+    padding: 10px 14px;
+    text-align: right;
+    font-weight: 600;
+  }
+  th:first-child { text-align: left; border-radius: 6px 0 0 0; }
+  th:last-child { border-radius: 0 6px 0 0; }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid #eee;
+    text-align: right;
+  }
+  td:first-child { text-align: left; font-weight: 500; }
+  tr:hover td { background: #f5f8ff; }
+  tr.total-row td {
+    font-weight: 700;
+    background: #eef4fc;
+    border-top: 2px solid #1a56a0;
+  }
+  .positive { color: #27ae60; }
+  .negative { color: #e74c3c; }
+
+  .category-header {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a56a0;
+    margin: 24px 0 10px;
+    padding: 8px 14px;
+    background: #eef4fc;
+    border-radius: 6px;
+    border-left: 4px solid #1a56a0;
+  }
+  .category-header:first-child { margin-top: 0; }
+
+  .chart-wrap { position: relative; height: 300px; }
+
+  .select-wrap { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+  .select-wrap label { font-size: 13px; color: #666; font-weight: 600; }
+  select {
+    padding: 7px 12px;
+    border: 1px solid #dce4f0;
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  #results { display: none; }
+
+  @media (max-width: 600px) {
+    header { padding: 16px; }
+    .kpi { min-width: 140px; }
+    th, td { padding: 8px 10px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>正洋 月份營收分析工具</h1>
+    <p>上傳 Excel 銷售資料，自動產生月份營收與毛利分析報表</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="upload-area" id="uploadArea">
+    <div class="upload-icon">📊</div>
+    <h2>拖放 Excel 檔案到此處</h2>
+    <p>或點擊下方按鈕選擇檔案（支援 .xlsx, .xls）</p>
+    <label class="btn-upload" for="fileInput">選擇檔案</label>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+  </div>
+
+  <div id="status"></div>
+
+  <div id="results">
+    <div class="kpi-row" id="kpiRow"></div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('overall')">整體月份報表</button>
+      <button class="tab" onclick="switchTab('category')">分類月份報表</button>
+      <button class="tab" onclick="switchTab('salesperson')">業務人員報表</button>
+    </div>
+
+    <div id="tab-overall" class="tab-content active">
+      <div class="card">
+        <div class="card-title">月份營收趨勢</div>
+        <div class="chart-wrap"><canvas id="chartOverall"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">整體月份報表</div>
+        <div id="tableOverall"></div>
+      </div>
+    </div>
+
+    <div id="tab-category" class="tab-content">
+      <div class="card">
+        <div class="card-title">分類月份比較</div>
+        <div class="select-wrap">
+          <label>選擇月份：</label>
+          <select id="catMonthSelect" onchange="renderCatChart()"></select>
+        </div>
+        <div class="chart-wrap"><canvas id="chartCategory"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">各分類月份明細</div>
+        <div id="tableCategory"></div>
+      </div>
+    </div>
+
+    <div id="tab-salesperson" class="tab-content">
+      <div class="card">
+        <div class="card-title">業務人員月份營收</div>
+        <div class="chart-wrap"><canvas id="chartSales"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">業務人員月份報表</div>
+        <div id="tableSales"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CATEGORIES = [
+  { name: '魚你相遇/相伴禮盒', test: n => n.includes('禮盒') },
+  { name: '魚樂薯條',          test: n => n.includes('薯條') },
+  { name: '魚樂棒棒',          test: n => n.includes('魚鬆甜心捲') },
+  { name: 'Toro魚鬆',          test: n => n.includes('海苔鮪魚鬆') || n.includes('鮭魚鬆') },
+  { name: '海鮮品',            test: n => /[魚蝦魷干]/.test(n) },
+  { name: '團購',              test: n => n.includes('團') },
+  { name: '補給品',            test: n => n.includes('補給') },
+];
+
+function classifyProduct(name) {
+  if (!name) return '其他';
+  for (const c of CATEGORIES) {
+    if (c.test(name)) return c.name;
+  }
+  return '其他';
+}
+
+const fmt  = n => n.toLocaleString('zh-TW', { maximumFractionDigits: 0 });
+const fmtP = n => (n * 100).toFixed(1) + '%';
+const cls  = n => n >= 0 ? 'positive' : 'negative';
+
+let gMonthly = {}, gCategory = {}, gSales = {}, gMonths = [], gSalesList = [];
+let chartOverall, chartCategory, chartSales;
+
+const uploadArea = document.getElementById('uploadArea');
+const fileInput  = document.getElementById('fileInput');
+
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+uploadArea.addEventListener('drop', e => { e.preventDefault(); uploadArea.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+uploadArea.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
+fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+function setStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = 'block';
+}
+
+function handleFile(file) {
+  if (!file) return;
+  if (!file.name.match(/\.xlsx?$/i)) { setStatus('請上傳 .xlsx 或 .xls 格式的檔案', 'error'); return; }
+
+  setStatus('⏳ 正在讀取並分析資料…', 'loading');
+  document.getElementById('results').style.display = 'none';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+      processData(rows);
+    } catch (err) {
+      setStatus('❌ 讀取失敗：' + err.message, 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function processData(rows) {
+  if (rows.length < 2) { setStatus('❌ 檔案無資料', 'error'); return; }
+
+  const orders = {};
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const dept = r[2];
+    if (!dept || dept !== '正洋') continue;
+
+    const orderNo   = String(r[0] || '').trim();
+    const dateRaw   = r[1];
+    const revenue   = parseFloat(r[20]) || 0;     // 欄 21：本幣含稅金額
+    const cost      = parseFloat(r[19]) || 0;     // 欄 20：總成本
+    const product   = String(r[4] || '').trim();
+    const salesperson = String(r[15] || '').trim();
+
+    if (!orderNo || !dateRaw) continue;
+
+    let dateStr = '';
+    if (typeof dateRaw === 'number') {
+      const d = XLSX.SSF.parse_date_code(dateRaw);
+      dateStr = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+    } else {
+      dateStr = String(dateRaw).trim();
+    }
+    if (dateStr.length < 7) continue;
+    const month = dateStr.substring(0, 7);
+
+    if (!orders[orderNo]) {
+      orders[orderNo] = { month, revenue, cost: 0, category: classifyProduct(product), salesperson };
+    }
+    orders[orderNo].cost += cost;
+  }
+
+  gMonthly = {}; gCategory = {}; gSales = {};
+
+  for (const o of Object.values(orders)) {
+    const { month: m, revenue: rev, cost, category: cat, salesperson: sp } = o;
+
+    if (!gMonthly[m]) gMonthly[m] = { rev: 0, cost: 0 };
+    gMonthly[m].rev  += rev;
+    gMonthly[m].cost += cost;
+
+    if (!gCategory[cat]) gCategory[cat] = {};
+    if (!gCategory[cat][m]) gCategory[cat][m] = { rev: 0, cost: 0 };
+    gCategory[cat][m].rev  += rev;
+    gCategory[cat][m].cost += cost;
+
+    if (!gSales[sp]) gSales[sp] = {};
+    if (!gSales[sp][m]) gSales[sp][m] = 0;
+    gSales[sp][m] += rev;
+  }
+
+  gMonths    = Object.keys(gMonthly).sort();
+  gSalesList = Object.keys(gSales).sort();
+
+  const totalOrders = Object.keys(orders).length;
+  setStatus(`✅ 已分析 ${totalOrders} 張訂單（正洋部門），共 ${gMonths.length} 個月份`, 'success');
+
+  renderAll();
+  document.getElementById('results').style.display = 'block';
+}
+
+function renderAll() {
+  renderKPI();
+  renderOverall();
+  renderCategorySelect();
+  renderCatChart();
+  renderCategoryTables();
+  renderSales();
+}
+
+function renderKPI() {
+  let totRev = 0, totCost = 0;
+  for (const d of Object.values(gMonthly)) { totRev += d.rev; totCost += d.cost; }
+  const totProfit = totRev - totCost;
+  const margin = totRev > 0 ? totProfit / totRev : 0;
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi"><div class="kpi-label">累計營收</div><div class="kpi-value">$${fmt(totRev)}</div><div class="kpi-sub">正洋部門</div></div>
+    <div class="kpi green"><div class="kpi-label">累計毛利</div><div class="kpi-value ${cls(totProfit)}">$${fmt(totProfit)}</div><div class="kpi-sub">&nbsp;</div></div>
+    <div class="kpi orange"><div class="kpi-label">整體毛利率</div><div class="kpi-value">${fmtP(margin)}</div><div class="kpi-sub">&nbsp;</div></div>
+    <div class="kpi purple"><div class="kpi-label">月份數</div><div class="kpi-value">${gMonths.length}</div><div class="kpi-sub">涵蓋月份</div></div>
+  `;
+}
+
+function renderOverall() {
+  let html = `<table><thead><tr>
+    <th>月份</th><th>營收</th><th>成本</th><th>毛利</th><th>毛利率</th>
+  </tr></thead><tbody>`;
+
+  let tR = 0, tC = 0;
+  for (const m of gMonths) {
+    const { rev, cost } = gMonthly[m];
+    const profit = rev - cost;
+    const margin = rev > 0 ? profit / rev : 0;
+    html += `<tr>
+      <td>${m}</td>
+      <td>$${fmt(rev)}</td>
+      <td>$${fmt(cost)}</td>
+      <td class="${cls(profit)}">$${fmt(profit)}</td>
+      <td class="${cls(margin)}">${fmtP(margin)}</td>
+    </tr>`;
+    tR += rev; tC += cost;
+  }
+  const tP = tR - tC;
+  const tM = tR > 0 ? tP / tR : 0;
+  html += `<tr class="total-row">
+    <td>合計</td>
+    <td>$${fmt(tR)}</td>
+    <td>$${fmt(tC)}</td>
+    <td class="${cls(tP)}">$${fmt(tP)}</td>
+    <td class="${cls(tM)}">${fmtP(tM)}</td>
+  </tr></tbody></table>`;
+  document.getElementById('tableOverall').innerHTML = html;
+
+  if (chartOverall) chartOverall.destroy();
+  chartOverall = new Chart(document.getElementById('chartOverall'), {
+    type: 'bar',
+    data: {
+      labels: gMonths,
+      datasets: [
+        { label: '營收', data: gMonths.map(m => gMonthly[m].rev), backgroundColor: 'rgba(26,86,160,0.75)', borderRadius: 4 },
+        { label: '毛利', data: gMonths.map(m => { const d = gMonthly[m]; return d.rev - d.cost; }),
+          backgroundColor: gMonths.map(m => { const d = gMonthly[m]; return (d.rev - d.cost) >= 0 ? 'rgba(39,174,96,0.75)' : 'rgba(231,76,60,0.75)'; }), borderRadius: 4 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } },
+      scales: { y: { ticks: { callback: v => '$' + fmt(v) } } } }
+  });
+}
+
+function renderCategorySelect() {
+  const sel = document.getElementById('catMonthSelect');
+  sel.innerHTML = `<option value="all">全部月份</option>` +
+    gMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function renderCatChart() {
+  const month = document.getElementById('catMonthSelect').value;
+  const cats = Object.keys(gCategory).filter(c => c !== '其他').concat(
+    Object.keys(gCategory).includes('其他') ? ['其他'] : []);
+
+  const colors = ['#1a56a0','#27ae60','#e67e22','#8e44ad','#e74c3c','#16a085','#f39c12','#7f8c8d'];
+
+  if (chartCategory) chartCategory.destroy();
+  chartCategory = new Chart(document.getElementById('chartCategory'), {
+    type: 'doughnut',
+    data: { labels: cats, datasets: [{ data: cats.map(cat => {
+      if (month === 'all') return Object.values(gCategory[cat] || {}).reduce((s,d) => s+d.rev, 0);
+      return (gCategory[cat]?.[month]?.rev) || 0;
+    }), backgroundColor: colors, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: ctx => `${ctx.label}: $${fmt(ctx.raw)}` } } } }
+  });
+}
+
+function renderCategoryTables() {
+  const orderedCats = CATEGORIES.map(c => c.name).filter(c => gCategory[c]);
+  if (gCategory['其他']) orderedCats.push('其他');
+
+  let html = '';
+  for (const cat of orderedCats) {
+    const months = Object.keys(gCategory[cat]).sort();
+    let tR = 0, tC = 0;
+    html += `<div class="category-header">${cat}</div>`;
+    html += `<table><thead><tr><th>月份</th><th>營收</th><th>成本</th><th>毛利</th><th>毛利率</th></tr></thead><tbody>`;
+    for (const m of months) {
+      const { rev, cost } = gCategory[cat][m];
+      const profit = rev - cost;
+      const margin = rev > 0 ? profit / rev : 0;
+      html += `<tr><td>${m}</td><td>$${fmt(rev)}</td><td>$${fmt(cost)}</td>
+        <td class="${cls(profit)}">$${fmt(profit)}</td>
+        <td class="${cls(margin)}">${fmtP(margin)}</td></tr>`;
+      tR += rev; tC += cost;
+    }
+    const tP = tR - tC; const tM = tR > 0 ? tP / tR : 0;
+    html += `<tr class="total-row"><td>小計</td><td>$${fmt(tR)}</td><td>$${fmt(tC)}</td>
+      <td class="${cls(tP)}">$${fmt(tP)}</td><td class="${cls(tM)}">${fmtP(tM)}</td></tr>
+      </tbody></table><br>`;
+  }
+  document.getElementById('tableCategory').innerHTML = html;
+}
+
+function renderSales() {
+  const colors = ['#1a56a0','#27ae60','#e67e22','#8e44ad','#e74c3c','#16a085','#f39c12'];
+  const datasets = gSalesList.map((sp, i) => ({
+    label: sp,
+    data: gMonths.map(m => gSales[sp][m] || 0),
+    backgroundColor: colors[i % colors.length],
+    borderRadius: 4
+  }));
+
+  if (chartSales) chartSales.destroy();
+  chartSales = new Chart(document.getElementById('chartSales'), {
+    type: 'bar',
+    data: { labels: gMonths, datasets },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => '$' + fmt(v) } } } }
+  });
+
+  let html = `<table><thead><tr><th>月份</th>`;
+  for (const sp of gSalesList) html += `<th>${sp}</th>`;
+  html += `<th>月合計</th></tr></thead><tbody>`;
+
+  let totals = {};
+  for (const m of gMonths) {
+    let rowTotal = 0;
+    html += `<tr><td>${m}</td>`;
+    for (const sp of gSalesList) {
+      const v = gSales[sp][m] || 0;
+      rowTotal += v;
+      totals[sp] = (totals[sp] || 0) + v;
+      html += `<td>${v > 0 ? '$' + fmt(v) : '-'}</td>`;
+    }
+    html += `<td><strong>$${fmt(rowTotal)}</strong></td></tr>`;
+  }
+
+  let grandTotal = 0;
+  html += `<tr class="total-row"><td>合計</td>`;
+  for (const sp of gSalesList) {
+    html += `<td>$${fmt(totals[sp] || 0)}</td>`;
+    grandTotal += totals[sp] || 0;
+  }
+  html += `<td>$${fmt(grandTotal)}</td></tr></tbody></table>`;
+  document.getElementById('tableSales').innerHTML = html;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+</script>
+</body>
+</html>
