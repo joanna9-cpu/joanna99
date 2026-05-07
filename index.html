@@ -801,7 +801,7 @@ function exportPDF() {
 
   // ── Assemble single-page layout ──
   const content = document.createElement('div');
-  content.style.cssText = 'font-family:Arial,"Microsoft JhengHei",sans-serif;color:#333;width:277mm;';
+  content.style.cssText = 'font-family:Arial,"Microsoft JhengHei",sans-serif;color:#333;width:194mm;';
   content.innerHTML = `
     <!-- Header -->
     <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1a56a0;padding-bottom:6px;margin-bottom:10px">
@@ -833,133 +833,8 @@ function exportPDF() {
     filename,
     image: { type: 'jpeg', quality: 0.98 },
     html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: 'avoid-all' }
-  }).from(content).save();
-}
-
-  // shared cell style builders
-  const th = (txt, w) => `<th style="padding:5px 8px;text-align:right;border-bottom:2px solid #1a56a0;white-space:nowrap${w?';width:'+w:''}">${txt}</th>`;
-  const thL = (txt, w) => `<th style="padding:5px 8px;text-align:left;border-bottom:2px solid #1a56a0${w?';width:'+w:''}">${txt}</th>`;
-  const td  = (txt, color) => `<td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap${color?';color:'+color:''}">${txt}</td>`;
-  const tdL = (txt) => `<td style="padding:5px 8px;border-bottom:1px solid #eee">${txt}</td>`;
-  const tdf = (txt, color) => `<td style="padding:5px 8px;text-align:right;font-weight:700;background:#eef4fc;white-space:nowrap${color?';color:'+color:''}">${txt}</td>`;
-  const tdfL= (txt) => `<td style="padding:5px 8px;font-weight:700;background:#eef4fc">${txt}</td>`;
-
-  // ── KPI ──
-  let totRev = 0, totCost = 0;
-  for (const d of Object.values(gMonthly)) { totRev += d.rev; totCost += d.cost; }
-  const totProfit = totRev - totCost;
-  const totMargin = totRev > 0 ? totProfit / totRev : 0;
-
-  const kpiHtml = `
-    <div style="display:flex;gap:12px;margin-bottom:16px">
-      ${[
-        ['總營收',  '$' + fmt(totRev),   '#1a56a0'],
-        ['毛利',    '$' + fmt(totProfit), totProfit>=0?'#27ae60':'#e74c3c'],
-        ['毛利率',  fmtP(totMargin),     totMargin>=0?'#e67e22':'#e74c3c'],
-        ['月份數',  gMonths.length + ' 個月', '#8e44ad']
-      ].map(([label, val, color]) => `
-        <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:10px 14px;border-left:4px solid ${color}">
-          <div style="font-size:10px;color:#888;margin-bottom:4px">${label}</div>
-          <div style="font-size:17px;font-weight:700;color:${color}">${val}</div>
-        </div>`).join('')}
-    </div>`;
-
-  // ── Category + Product table ──
-  const orderedCats = CATEGORIES.map(c => c.name).filter(c => gCategory[c]);
-  if (gCategory['其他']) orderedCats.push('其他');
-
-  let catHtml = '';
-  for (const cat of orderedCats) {
-    const catMonths = Object.keys(gCategory[cat]).sort();
-    const catProds = Object.entries(gProducts)
-      .filter(([, d]) => d.cat === cat)
-      .map(([name, d]) => {
-        let rev = 0, cost = 0, qty = 0;
-        for (const m of catMonths) {
-          if (d.months[m]) { rev += d.months[m].rev; cost += d.months[m].cost; qty += d.months[m].qty; }
-        }
-        return { name, rev, cost, qty };
-      })
-      .filter(p => p.rev !== 0 || p.qty !== 0)
-      .sort((a, b) => b.rev - a.rev);
-
-    let tR = 0, tC = 0, tQ = 0;
-    let rows = '';
-    for (const p of catProds) {
-      const profit = p.rev - p.cost;
-      const margin = p.rev > 0 ? profit / p.rev : 0;
-      const c = profit >= 0 ? '#27ae60' : '#e74c3c';
-      rows += `<tr>${tdL(p.name)}${td(fmtQ(p.qty))}${td('$'+fmt(p.rev))}${td('$'+fmt(p.cost))}${td('$'+fmt(profit),c)}${td(fmtP(margin),c)}</tr>`;
-      tR += p.rev; tC += p.cost; tQ += p.qty;
-    }
-    const tP = tR - tC; const tM = tR > 0 ? tP / tR : 0;
-    const tc = tP >= 0 ? '#27ae60' : '#e74c3c';
-
-    catHtml += `
-      <div style="margin-bottom:14px;page-break-inside:avoid">
-        <div style="background:#1a56a0;color:#fff;padding:6px 10px;font-weight:700;font-size:12px">${cat}</div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed">
-          <colgroup>
-            <col style="width:38%"><col style="width:10%"><col style="width:13%">
-            <col style="width:13%"><col style="width:13%"><col style="width:13%">
-          </colgroup>
-          <thead><tr style="background:#eef4fc">
-            ${thL('產品名稱')}${th('數量')}${th('營收')}${th('成本')}${th('毛利')}${th('毛利率')}
-          </tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot><tr>
-            ${tdfL('小計')}${tdf(fmtQ(tQ))}${tdf('$'+fmt(tR))}${tdf('$'+fmt(tC))}${tdf('$'+fmt(tP),tc)}${tdf(fmtP(tM),tc)}
-          </tr></tfoot>
-        </table>
-      </div>`;
-  }
-
-  // ── Salesperson table ──
-  let spRows = '';
-  let spTot = 0, spTotQty = 0;
-  for (const sp of gSalesList) {
-    let rev = 0, qty = 0;
-    for (const m of gMonths) { if (gSales[sp][m]) { rev += gSales[sp][m].rev; qty += gSales[sp][m].qty; } }
-    spTot += rev; spTotQty += qty;
-    spRows += `<tr>${tdL(sp)}${td(fmtQ(qty))}${td('$'+fmt(rev))}</tr>`;
-  }
-  const salesHtml = `
-    <div style="margin-bottom:14px;page-break-inside:avoid">
-      <div style="background:#1a56a0;color:#fff;padding:6px 10px;font-weight:700;font-size:12px">業務人員業績</div>
-      <table style="width:50%;border-collapse:collapse;font-size:11px">
-        <thead><tr style="background:#eef4fc">
-          ${thL('業務人員')}${th('銷售數量')}${th('營收')}
-        </tr></thead>
-        <tbody>${spRows}</tbody>
-        <tfoot><tr>${tdfL('合計')}${tdf(fmtQ(spTotQty))}${tdf('$'+fmt(spTot))}</tr></tfoot>
-      </table>
-    </div>`;
-
-  // ── Assemble ──
-  const content = document.createElement('div');
-  content.style.cssText = 'font-family:Arial,"Microsoft JhengHei",sans-serif;color:#333;width:277mm;font-size:11px';
-  content.innerHTML = `
-    <div style="text-align:center;margin-bottom:16px;border-bottom:3px solid #1a56a0;padding-bottom:12px">
-      <h1 style="font-size:18px;color:#1a56a0;margin-bottom:4px">正洋部門 月份營收毛利報表</h1>
-      <p style="font-size:11px;color:#888">分析期間：${months} ／ 產出日期：${now}</p>
-    </div>
-    <div style="font-size:12px;font-weight:700;color:#1a56a0;margin-bottom:8px;border-left:4px solid #1a56a0;padding-left:8px">營收摘要</div>
-    ${kpiHtml}
-    <div style="font-size:12px;font-weight:700;color:#1a56a0;margin:14px 0 8px;border-left:4px solid #1a56a0;padding-left:8px">各類別產品明細</div>
-    ${catHtml}
-    <div style="font-size:12px;font-weight:700;color:#1a56a0;margin:14px 0 8px;border-left:4px solid #1a56a0;padding-left:8px">業務人員業績</div>
-    ${salesHtml}`;
-
-  const filename = `正洋報表_${months.replace(/、/g,'_')}_${now.replace(/\//g,'')}.pdf`;
-  html2pdf().set({
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-    pagebreak: { mode: 'css', before: '.page-break', avoid: 'div' }
   }).from(content).save();
 }
 </script>
