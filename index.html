@@ -210,6 +210,7 @@
       <button class="tab active" onclick="switchTab('overall')">整體月份報表</button>
       <button class="tab" onclick="switchTab('category')">分類月份報表</button>
       <button class="tab" onclick="switchTab('salesperson')">業務人員報表</button>
+      <button class="tab" onclick="switchTab('products')">產品明細報表</button>
     </div>
 
     <div id="tab-overall" class="tab-content active">
@@ -248,6 +249,19 @@
         <div id="tableSales"></div>
       </div>
     </div>
+
+    <div id="tab-products" class="tab-content">
+      <div class="card">
+        <div class="card-title">產品銷售明細（依營收排序）</div>
+        <div class="select-wrap">
+          <label>篩選月份：</label>
+          <select id="prodMonthSelect" onchange="renderProducts()"></select>
+          <label style="margin-left:12px">篩選類別：</label>
+          <select id="prodCatSelect" onchange="renderProducts()"></select>
+        </div>
+        <div id="tableProducts"></div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -276,7 +290,7 @@ const fmtP = n => (n * 100).toFixed(1) + '%';
 const fmtQ = n => n % 1 === 0 ? n.toLocaleString('zh-TW') : n.toFixed(2);
 const cls  = n => n >= 0 ? 'positive' : 'negative';
 
-let gMonthly = {}, gCategory = {}, gSales = {}, gMonths = [], gSalesList = [];
+let gMonthly = {}, gCategory = {}, gSales = {}, gProducts = {}, gMonths = [], gSalesList = [];
 let chartOverall, chartCategory, chartSales;
 
 const uploadArea = document.getElementById('uploadArea');
@@ -359,10 +373,10 @@ function processData(rows) {
     lines.push({ month, revenue, cost, qty, category: classifyProduct(product), salesperson, product });
   }
 
-  gMonthly = {}; gCategory = {}; gSales = {};
+  gMonthly = {}; gCategory = {}; gSales = {}; gProducts = {};
 
   for (const o of lines) {
-    const { month: m, revenue: rev, cost, qty, category: cat, salesperson: sp } = o;
+    const { month: m, revenue: rev, cost, qty, category: cat, salesperson: sp, product: prod } = o;
 
     if (!gMonthly[m]) gMonthly[m] = { rev: 0, cost: 0, qty: 0 };
     gMonthly[m].rev  += rev;
@@ -379,6 +393,13 @@ function processData(rows) {
     if (!gSales[sp][m]) gSales[sp][m] = { rev: 0, qty: 0 };
     gSales[sp][m].rev += rev;
     gSales[sp][m].qty += qty;
+
+    const prodKey = prod || '(未命名)';
+    if (!gProducts[prodKey]) gProducts[prodKey] = { cat, months: {} };
+    if (!gProducts[prodKey].months[m]) gProducts[prodKey].months[m] = { rev: 0, cost: 0, qty: 0 };
+    gProducts[prodKey].months[m].rev  += rev;
+    gProducts[prodKey].months[m].cost += cost;
+    gProducts[prodKey].months[m].qty  += qty;
   }
 
   gMonths    = Object.keys(gMonthly).sort();
@@ -398,6 +419,83 @@ function renderAll() {
   renderCatChart();
   renderCategoryTables();
   renderSales();
+  renderProductSelects();
+  renderProducts();
+}
+
+function renderProductSelects() {
+  const mSel = document.getElementById('prodMonthSelect');
+  mSel.innerHTML = `<option value="all">全部月份</option>` +
+    gMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  const cats = ['all', ...CATEGORIES.map(c => c.name).filter(c => gCategory[c])];
+  if (gCategory['其他']) cats.push('其他');
+  const cSel = document.getElementById('prodCatSelect');
+  cSel.innerHTML = `<option value="all">全部類別</option>` +
+    cats.slice(1).map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+function renderProducts() {
+  const selMonth = document.getElementById('prodMonthSelect').value;
+  const selCat   = document.getElementById('prodCatSelect').value;
+
+  // Build summary rows
+  const rows = [];
+  for (const [name, data] of Object.entries(gProducts)) {
+    if (selCat !== 'all' && data.cat !== selCat) continue;
+    let rev = 0, cost = 0, qty = 0;
+    const months = selMonth === 'all' ? Object.keys(data.months) : [selMonth];
+    for (const m of months) {
+      if (!data.months[m]) continue;
+      rev  += data.months[m].rev;
+      cost += data.months[m].cost;
+      qty  += data.months[m].qty;
+    }
+    if (rev === 0 && cost === 0 && qty === 0) continue;
+    const profit = rev - cost;
+    const margin = rev !== 0 ? profit / rev : 0;
+    rows.push({ name, cat: data.cat, qty, rev, cost, profit, margin });
+  }
+
+  // Sort by revenue descending
+  rows.sort((a, b) => b.rev - a.rev);
+
+  let tRev = 0, tCost = 0, tQty = 0;
+  let html = `<table><thead><tr>
+    <th style="text-align:left">產品名稱</th>
+    <th style="text-align:left">類別</th>
+    <th>銷售數量</th>
+    <th>營收 (NT$)</th>
+    <th>成本 (NT$)</th>
+    <th>毛利 (NT$)</th>
+    <th>毛利率</th>
+  </tr></thead><tbody>`;
+
+  for (const r of rows) {
+    tRev += r.rev; tCost += r.cost; tQty += r.qty;
+    html += `<tr>
+      <td>${r.name}</td>
+      <td><span style="background:#eef4fc;padding:2px 8px;border-radius:4px;font-size:12px">${r.cat}</span></td>
+      <td>${fmtQ(r.qty)}</td>
+      <td>$${fmt(r.rev)}</td>
+      <td>$${fmt(r.cost)}</td>
+      <td class="${cls(r.profit)}">$${fmt(r.profit)}</td>
+      <td class="${cls(r.margin)}">${fmtP(r.margin)}</td>
+    </tr>`;
+  }
+
+  const tProfit = tRev - tCost;
+  const tMargin = tRev > 0 ? tProfit / tRev : 0;
+  html += `<tr class="total-row">
+    <td>合計</td><td></td>
+    <td>${fmtQ(tQty)}</td>
+    <td>$${fmt(tRev)}</td>
+    <td>$${fmt(tCost)}</td>
+    <td class="${cls(tProfit)}">$${fmt(tProfit)}</td>
+    <td class="${cls(tMargin)}">${fmtP(tMargin)}</td>
+  </tr></tbody></table>`;
+
+  document.getElementById('tableProducts').innerHTML = html;
 }
 
 function renderKPI() {
