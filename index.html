@@ -270,9 +270,9 @@
 const CATEGORIES = [
   { name: '魚你相遇/相伴禮盒', test: n => n.includes('禮盒') },
   { name: '魚樂薯條',          test: n => n.includes('薯條') },
-  { name: '魚樂棒棒',          test: n => n.includes('魚鬆甜心捲') },
-  { name: 'Toro魚鬆',          test: n => n.includes('海苔鮪魚鬆') || n.includes('鮭魚鬆') },
-  { name: '海鮮品',            test: n => /[魚蝦魷干]/.test(n) },
+  { name: '魚樂棒棒',          test: n => n.includes('魚鬆甜心捲') || n.includes('魚鬆捲心酥') },
+  { name: 'Toro魚鬆',          test: n => n.includes('魚鬆') && !n.includes('捲心酥') && !n.includes('甜心捲') },
+  { name: '海鮮品',            test: n => /蝦|蟹|干貝|鮑魚|花枝|透抽|魷魚|章魚|蚵|蛤/.test(n) },
   { name: '團購',              test: n => n.includes('團') },
   { name: '補給品',            test: n => n.includes('補給') },
 ];
