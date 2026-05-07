@@ -348,10 +348,13 @@ function processData(rows) {
 
     const orderNo   = String(r[0] || '').trim();
     const dateRaw   = r[1];
-    const revenue   = parseFloat(r[17]) || 0;   // 欄 R（index 17）
-    const cost      = parseFloat(r[18]) || 0;   // 欄 S（index 18）
+    const qty       = parseFloat(r[5]) || 0;      // 欄 6：數量
+    const rate      = parseFloat(r[8]) || 1;      // 欄 9：本幣匯率值
+    const price     = parseFloat(r[9]) || 0;      // 欄 10：單價
+    const revenue   = qty * rate * price;          // 營收計算
+    const cost      = parseFloat(r[19]) || 0;     // 欄 20：總成本
     const product   = String(r[4] || '').trim();
-    const salesperson = String(r[14] || '').trim();
+    const salesperson = String(r[15] || '').trim();
 
     if (!orderNo || !dateRaw) continue;
 
