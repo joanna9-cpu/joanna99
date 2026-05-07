@@ -702,7 +702,8 @@ function switchTab(name) {
 }
 
 function exportPDF() {
-  const months = gMonths.join('、');
+  const fmtMonth = m => { const [y, mo] = m.split('-'); return `${y}年${parseInt(mo)}月份`; };
+  const months = gMonths.map(fmtMonth).join('、');
   const now = new Date().toLocaleDateString('zh-TW');
 
   // shared cell style builders
